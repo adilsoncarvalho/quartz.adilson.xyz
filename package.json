@@ -40,7 +40,6 @@
     "@myriaddreamin/rehype-typst": "^0.6.0",
     "@napi-rs/simple-git": "0.1.22",
     "@tweenjs/tween.js": "^25.0.0",
-    "ansi-truncate": "^1.4.0",
     "async-mutex": "^0.5.0",
     "chokidar": "^4.0.3",
     "cli-spinner": "^0.2.10",

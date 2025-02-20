@@ -17,7 +17,7 @@ const config: QuartzConfig = {
     },
     locale: "en-US",
     baseUrl: "quartz.adilson.xyz",
-    ignorePatterns: ["private", "templates", ".obsidian"],
+    ignorePatterns: ["Attachments", "private", "Templates", ".obsidian", ".obsidian-companion"],
     defaultDateType: "created",
     generateSocialImages: false,
     theme: {

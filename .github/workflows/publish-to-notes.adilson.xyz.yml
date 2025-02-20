@@ -1,0 +1,33 @@
+name: Publish to notes.adilson.xyz - Trigger CodeBuild
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: "Specify the build type"
+        required: true
+        default: "manual"
+  push:
+    tags:
+      - "release/*"
+
+jobs:
+  trigger-codebuild:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Trigger CodeBuild project
+        uses: aws-actions/aws-codebuild-run-build@v1
+        with:
+          project-name: ${{ vars.AWS_CODEBUILD_PROJECT_NAME }}
+        env:
+          BUILD_TYPE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.build_type || 'release' }}

@@ -26,6 +26,8 @@ jobs:
           node-version: 22
       - name: Install Dependencies
         run: npm ci
+      - name: Hack to fix the error Cannot find module '../lightningcss.linux-x64-gnu.node'
+        run: npm i lightningcss-linux-x64-gnu
       - name: Copy staging configuration
         run: cp .obsidian-companion/staging/* .
       - name: Build Quartz

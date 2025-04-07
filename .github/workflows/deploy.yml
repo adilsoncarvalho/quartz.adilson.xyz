@@ -27,7 +27,7 @@ jobs:
       - name: Install Dependencies
         run: npm ci
       - name: Copy staging configuration
-        run: cp .obsidian-companion/staging .
+        run: cp .obsidian-companion/staging/* .
       - name: Build Quartz
         run: npx quartz build
       - name: Upload artifact

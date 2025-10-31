@@ -1,0 +1,221 @@
+name: Sync Upstream Quartz v4
+
+on:
+  # Run on first day of each month at 2 AM UTC
+  schedule:
+    - cron: '0 2 1 * *'
+
+  # Allow manual trigger
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync-upstream:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: notes.adilson.xyz
+          fetch-depth: 0  # Full history needed for rebase
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Create sync branch
+        id: branch
+        run: |
+          BRANCH_NAME="upstream-sync-$(date +%Y-%m-%d)"
+          echo "branch_name=${BRANCH_NAME}" >> $GITHUB_OUTPUT
+          git checkout -b "${BRANCH_NAME}"
+
+      - name: Run upstream sync script
+        id: sync
+        run: |
+          # Make script executable
+          chmod +x .adilson/sync-upstream.sh
+
+          # Run sync script and capture exit code
+          set +e
+          ./.adilson/sync-upstream.sh > sync-output.log 2>&1
+          SYNC_EXIT_CODE=$?
+          set -e
+
+          # Store output for PR body
+          echo "SYNC_OUTPUT<<EOF" >> $GITHUB_ENV
+          cat sync-output.log >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+          # Check if sync was successful
+          if [ $SYNC_EXIT_CODE -eq 0 ]; then
+            echo "status=success" >> $GITHUB_OUTPUT
+            echo "has_conflicts=false" >> $GITHUB_OUTPUT
+          else
+            # Check if we're in a rebase state (conflicts)
+            if [ -d ".git/rebase-merge" ] || [ -d ".git/rebase-apply" ]; then
+              echo "status=conflicts" >> $GITHUB_OUTPUT
+              echo "has_conflicts=true" >> $GITHUB_OUTPUT
+
+              # Abort the rebase to leave the branch in a clean state
+              git rebase --abort || true
+
+              # Create a marker file with conflict info
+              echo "Rebase conflicts detected during automated sync" > SYNC_CONFLICTS.md
+              echo "" >> SYNC_CONFLICTS.md
+              echo "## Conflicting Files" >> SYNC_CONFLICTS.md
+              git checkout notes.adilson.xyz
+              git checkout ${{ steps.branch.outputs.branch_name }}
+
+              # Try the sync again to capture conflict files
+              ./.adilson/sync-upstream.sh > /dev/null 2>&1 || true
+              git status --short | grep "^UU\|^AA\|^DD\|^AU\|^UA" >> SYNC_CONFLICTS.md || echo "Could not determine conflicting files" >> SYNC_CONFLICTS.md
+              git rebase --abort || true
+
+              git add SYNC_CONFLICTS.md
+              git commit -m "docs: document sync conflicts for manual resolution"
+            else
+              echo "status=error" >> $GITHUB_OUTPUT
+              echo "has_conflicts=false" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+          exit 0  # Don't fail the workflow
+
+      - name: Push sync branch
+        if: steps.sync.outputs.status != 'error'
+        run: |
+          git push origin ${{ steps.branch.outputs.branch_name }} --force-with-lease
+
+      - name: Create Pull Request (Clean Sync)
+        if: steps.sync.outputs.status == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr create \
+            --title "chore: sync with upstream Quartz v4 ($(date +%Y-%m-%d))" \
+            --body "$(cat <<'EOF'
+          ## 🔄 Upstream Sync
+
+          This PR syncs the `notes.adilson.xyz` branch with the latest changes from upstream Quartz v4.
+
+          ### ✅ Status: Clean Sync
+
+          The rebase completed successfully with no conflicts. All changes from upstream have been applied cleanly.
+
+          ### 📋 Sync Log
+
+          <details>
+          <summary>Click to expand sync output</summary>
+
+          \`\`\`
+          ${{ env.SYNC_OUTPUT }}
+          \`\`\`
+
+          </details>
+
+          ### ⏭️ Next Steps
+
+          1. Review the changes in this PR
+          2. Test the site locally to ensure everything works
+          3. Merge this PR when ready
+          4. The sync branch will be automatically deleted after merge
+
+          ---
+          🤖 This PR was automatically created by the upstream sync workflow.
+          EOF
+          )" \
+            --base notes.adilson.xyz \
+            --head ${{ steps.branch.outputs.branch_name }}
+
+      - name: Create Pull Request (With Conflicts)
+        if: steps.sync.outputs.status == 'conflicts'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr create \
+            --title "⚠️ chore: sync with upstream Quartz v4 ($(date +%Y-%m-%d)) - CONFLICTS" \
+            --body "$(cat <<'EOF'
+          ## 🔄 Upstream Sync
+
+          This PR attempts to sync the `notes.adilson.xyz` branch with the latest changes from upstream Quartz v4.
+
+          ### ⚠️ Status: Conflicts Detected
+
+          The automated rebase encountered conflicts that require manual resolution.
+
+          ### 📋 Conflicting Files
+
+          See the `SYNC_CONFLICTS.md` file in this branch for details on conflicting files.
+
+          ### 🔧 Manual Resolution Required
+
+          To resolve the conflicts:
+
+          \`\`\`bash
+          # Checkout the sync branch
+          git fetch origin
+          git checkout ${{ steps.branch.outputs.branch_name }}
+
+          # Run the sync script manually
+          ./.adilson/sync-upstream.sh
+
+          # The script will guide you through conflict resolution
+          # After resolving conflicts:
+          git add <resolved-files>
+          git rebase --continue
+
+          # Push the resolved changes
+          git push origin ${{ steps.branch.outputs.branch_name }} --force-with-lease
+          \`\`\`
+
+          ### 📋 Sync Log
+
+          <details>
+          <summary>Click to expand sync output</summary>
+
+          \`\`\`
+          ${{ env.SYNC_OUTPUT }}
+          \`\`\`
+
+          </details>
+
+          ### ⏭️ Next Steps
+
+          1. Follow the manual resolution steps above
+          2. Test the site locally after resolving conflicts
+          3. Push the resolved changes to update this PR
+          4. Merge when all conflicts are resolved and tested
+
+          ---
+          🤖 This PR was automatically created by the upstream sync workflow.
+          ⚠️ Manual intervention required to resolve conflicts.
+          EOF
+          )" \
+            --base notes.adilson.xyz \
+            --head ${{ steps.branch.outputs.branch_name }} \
+            --label "needs-manual-resolution" \
+            --label "upstream-sync"
+
+      - name: Comment on workflow failure
+        if: steps.sync.outputs.status == 'error'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "❌ Upstream sync failed with an unexpected error."
+          echo "Please check the workflow logs for details."
+          echo ""
+          echo "Sync output:"
+          cat sync-output.log || true
+          exit 1

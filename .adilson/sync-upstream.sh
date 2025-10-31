@@ -197,7 +197,7 @@ while [ $iteration -lt $MAX_ITERATIONS ]; do
                 echo -e "${GREEN}Your ${TARGET_BRANCH} branch has been rebased onto the latest upstream v4.${NC}"
                 echo ""
                 echo -e "${BLUE}Next steps:${NC}"
-                echo "1. Review the changes: git log --oneline --graph -10"
+                echo "1. Review the changes: git log --oneline --graph"
                 echo "2. Test your site locally"
                 echo "3. Force push to your remote: git push origin ${TARGET_BRANCH} --force-with-lease"
                 echo ""
